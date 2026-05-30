@@ -42,7 +42,7 @@ class LLM:
 
 
     # TODO: not dict, but Response return
-    def prompt(self, message: str | dict | list[dict], enforce_model = None, think = True, keep_alive = 0) -> dict:
+    def prompt(self, message: str | dict | list[dict], enforce_model = None, think = False, max_tokens = -1, keep_alive = 0) -> dict:
         """
         Prompts the LLM.
 
@@ -50,7 +50,7 @@ class LLM:
             message (GPTMessage | list[GPTMessage]): context/message to send to LLM
             json (bool): forces JSON output, default False
         """
-        if think and self.model not in ["deepseek-r1:8b", "deepseek-r1:14b", "qwen3:8b", "qwen3:13b", "magistral"]:
+        if think and self.model not in ["deepseek-r1:8b", "deepseek-r1:14b", "qwen3.5:9b", "qwen3:13b", "magistral"]:
             think = False
             reasoning = False
 
@@ -82,25 +82,40 @@ class LLM:
                 if enforce_model:
                     response = chat(self.model, 
                                     messages=message, 
-                                    think=False, 
+                                    think=think, 
                                     format=enforce_model.model_json_schema(), 
                                     keep_alive=keep_alive,
-                                    options={"seed": self.seed})
+                                    options={"seed": self.seed,
+                                             "num_predict": max_tokens})
                 else:
                     response = chat(self.model, 
                                     messages=message, 
-                                    think=False, 
+                                    think=think, 
                                     keep_alive=keep_alive,
-                                    options={"seed": self.seed})
+                                    options={"seed": self.seed,
+                                             "num_predict": max_tokens})
 
                 content = response.message.content
 
+                # If schema enforcement was requested but the model output prose
+                # before the JSON (e.g. Qwen chain-of-thought), extract the last
+                # JSON object from the response.
+                if enforce_model and content:
+                    import re
+                    matches = re.findall(r'\{.*\}', content, re.DOTALL)
+                    if matches:
+                        content = matches[-1]
+
                 if think:
                     reasoning = response.message.thinking
+                else:
+                    reasoning = None
                 tokens_in = response.prompt_eval_count
                 tokens_out = response.eval_count
                 eval_in = response.prompt_eval_duration / 1_000_000_000
                 eval_out = response.eval_duration / 1_000_000_000
+
+
 
                 #print(message)
                 #print(response)
